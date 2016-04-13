@@ -1,20 +1,20 @@
 package ;
 
 class SpatialHash {
-	public var buckets(default,null): Map<Int,Map<Int,Array<Int>>>;
+	public var buckets(default,null): Map<Int,Array<SpatialEntity>>;
 	public var entities(default,null): Array<SpatialEntity>;
 	public var bucketSize(default,null): Float;
 	public var invBs(default,null): Float;
 
 	public function new( bucketSize: Float ) {
-		this.buckets = new Map<Int,Map<Int,Array<Int>>>();
+		this.buckets = new Map<Int,Array<SpatialEntity>>();
 		this.entities = [];
 		this.bucketSize = bucketSize;
 		this.invBs = 1.0 / bucketSize;
 	}
 
 	public inline function exists( e: SpatialEntity ) {
-		return entities[e.spatialId] == e;
+		return e.spatialId >= 0 && entities[e.spatialId] == e;
 	}
 
 	public function add( e: SpatialEntity ) {
@@ -49,9 +49,15 @@ class SpatialHash {
 			var spatialTop = Std.int(e.aabbTop * invBs);
 			var spatialBottom = Std.int(e.aabbBottom * invBs);
 			var spatialRight = Std.int(e.aabbRight * invBs);
+			var spatialIndex = e.spatialId;
 
-			fastRemoveAt( entities, e.spatialId );
-			e.spatialId = -1;
+			if ( spatialIndex != entities.length - 1 && entities.length > 1 ) {
+				var movedEntity = entities.pop();
+				entities[spatialIndex] = movedEntity;
+				movedEntity.spatialId = spatialIndex;
+			} else {
+				entities.pop();
+			}
 
 			if ( spatialRight != spatialLeft || spatialTop != spatialBottom ) {
 				for ( x in spatialLeft...spatialRight+1 ) {
@@ -62,12 +68,12 @@ class SpatialHash {
 			} else {
 				removeSingle( e, spatialLeft, spatialTop );
 			}
-
+			e.spatialId = -1;
 			return true;
 		}
 		return false;
 	}
-
+	
 	public inline function setPos( e: SpatialEntity, left: Float, top: Float ) {
 		addPos( e, left - e.aabbLeft, top - e.aabbTop );
 	}
@@ -123,35 +129,40 @@ class SpatialHash {
 	}
 	
 	@:extern inline function addSingle( e: SpatialEntity, x: Int, y: Int, intersected: Map<Int,Bool> ) {
-		var bucketsCol = buckets.get( x );
-		if ( bucketsCol == null ) {
-			buckets.set( x, [y => [e.spatialId]] );
-		}	else {
-			var bucket = bucketsCol.get( x );
-			if ( bucket == null ) {
-				bucketsCol.set( y, [e.spatialId] );
-			} else {
-				if ( intersected == null ) {
-					intersected = [e.spatialId => true];
-				}
+		var idx = (x<<15) + y;
+		var bucket = buckets.get( idx );
 
-				for ( oId in bucket ) {
-					var o = entities[oId];
-					if ( !intersected.exists(o.spatialId) && checkAABBIntersection( e, o )) {
-						if ( checkShapeIntersection( e, o ) ) {
-							e.onIntersection( o );
-							o.onIntersection( e );
-						}
+		if ( bucket == null ) {
+			buckets.set( idx, [e] );
+		} else {
+			if ( intersected == null ) {
+				intersected = [e.spatialId => true];
+			}
+			for ( o in bucket ) {
+				if ( !intersected.exists(o.spatialId) && checkAABBIntersection( e, o )) {
+					if ( (e.shape == AABB && o.shape == AABB) || checkShapeIntersection( e, o ) ) {
+						e.onIntersection( o );
+						o.onIntersection( e );
 					}
 				}
+			}
 
-				if ( bucket.indexOf( e.spatialId ) < 0 ) {
-					bucket.push( e.spatialId );
-				}
+			if ( bucket.indexOf( e ) < 0 ) {
+				bucket.push( e );
 			}
 		}
 
 		return intersected;
+	}
+
+	@:extern inline function removeSingle( e: SpatialEntity, x: Int, y: Int ) {
+		var idx = (x<<15) + y;
+		var bucket = buckets.get( idx );
+		if ( bucket.length <= 1 ) {
+			buckets.remove( idx );
+		} else {
+			fastRemove( bucket, e );
+		}
 	}
 
 	static function checkShapeIntersection( e: SpatialEntity, o: SpatialEntity ) {
@@ -470,17 +481,4 @@ class SpatialHash {
 		}
 		return c;
 	}	
-
-	@:extern inline function removeSingle( e: SpatialEntity, x: Int, y: Int ) {
-		var bucketsCol = buckets.get( x );
-		if ( bucketsCol != null ) {
-			var bucket = bucketsCol.get( y );
-			if ( bucket != null ) {
-				fastRemove( bucket, e.spatialId );
-				if ( bucket.length <= 0 ) {
-					bucketsCol.remove( y );
-				}
-			}
-		}
-	}
 }
