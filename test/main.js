@@ -32,6 +32,8 @@ function resizeCanvas() {
 
 function init() {
 	window.addEventListener( "resize", resizeCanvas );
+	
+	resizeCanvas();
 
 	for ( var i = 0; i < N; i++ ) {
 		var x = ( Math.random()*w >> 0 );
@@ -46,14 +48,13 @@ function init() {
 			vx: 100*Math.random()-50,
 			vy: 100*Math.random()-50,
 			onIntersection: function( other ) {
-				//ctx.fillStyle = "#f00";
-				//ctx.fillRect( other.aabbLeft - 5, other.aabbTop - 5, other.aabbRight - other.aabbLeft + 5, other.aabbBottom - other.aabbTop + 5 )
 				let tmpvx = e.vx;
 				let tmpvy = e.vy;
 				e.vx = other.vx;
 				e.vy = other.vy;
 				other.vx = tmpvx;
 				other.vy = tmpvy;
+				
 			},
 		}
 		spatialHash.add( e );
@@ -79,7 +80,7 @@ function render() {
 		ctx.font = "8px Arial";
 		for ( var x = 0; x < w / BUCKET_SIZE; x++ ) {
 			for ( var y = 0; y < h / BUCKET_SIZE; y++ ) {
-				var bucket = spatialHash.buckets.h[(x<<15)+y];
+				var bucket = spatialHash.buckets.h[spatialHash.makeIndex(x,y)];
 				if ( bucket ) {
 					ctx.fillStyle = "rgba(255,0,0,0.3)";
 					ctx.fillRect(x * BUCKET_SIZE, y*BUCKET_SIZE, BUCKET_SIZE, BUCKET_SIZE );
@@ -90,6 +91,37 @@ function render() {
 		}
 	}
 	//ctx.stroke();
+}
+
+function fireLightning( e, except, depth ) {
+	var except = except === undefined ? new haxe_ds_IntMap() : except;
+	var depth = depth === undefined ? 0 : depth;
+	
+	var list = [e];
+	except.h[e.spatialId] = true;
+	while( true ) {
+		var nearest = spatialHash.getNearest( e, except );
+		e = nearest;
+		if ( e === null || Math.random() < 0.6 ) {
+			break;
+		}
+		list.push( nearest );
+		except.h[e.spatialId] = true;
+		if ( depth < 64 && Math.random() < 0.6 ) {
+			fireLightning( nearest, except, depth+1 );
+		}
+	}	
+
+	if ( list.length > 1 ) {
+		ctx.beginPath();
+		ctx.strokeStyle = "#ff0000";
+		ctx.moveTo( list[0].aabbLeft, list[0].aabbTop );
+		for ( var i = 1; i < list.length; i++ ) {
+			ctx.lineWidth = 2*(list.length - i);
+			ctx.lineTo( list[i].aabbLeft, list[i].aabbTop );
+		}
+		ctx.stroke();
+	}
 }
 
 function update(dt) {
@@ -114,6 +146,10 @@ function update(dt) {
 		spatialHash.addPos( e, vx*dt, vy*dt );
 		
 		e.vy = vy + g;
+		
+		if ( Math.random() < dt ) {
+			fireLightning( e );
+		}
 	}	
 }
 

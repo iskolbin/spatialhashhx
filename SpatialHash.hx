@@ -111,7 +111,43 @@ class SpatialHash {
 		setAABB( e, e.aabbLeft + dleft, e.aabbTop + dtop, e.aabbRight + dright, e.aabbBottom + dbottom );
 	}
 
+	public inline static var MAX_NEAREST_STEPS = 64;
 
+	public function getNearest( e: SpatialEntity, except: Map<Int,Bool> ) {
+		if ( exists(e) && entities.length > 1 ) {
+			var spatialLeft = Std.int( e.aabbLeft * invBs );
+			var spatialTop = Std.int( e.aabbTop * invBs );
+			var bucket = buckets.get( makeIndex( spatialLeft, spatialTop ));
+			
+			if ( bucket.length > 1 ) {
+				for ( e_ in bucket ) {
+					if (e_ != e && (except==null || !except.exists(e_.spatialId))) {
+						return e_;
+					}
+				}
+			} else {
+				for ( i in 0...MAX_NEAREST_STEPS ) {
+					for ( x in spatialLeft-i...spatialLeft+i+1 ) {
+						for ( y in spatialTop-i...spatialTop+i+1) {
+							bucket = buckets.get( makeIndex( x, y ));
+							if ( bucket != null ) {
+								for ( e_ in bucket ) {
+									if (e_ != e && except==null || !except.exists(e_.spatialId)) {
+										return e_;
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		return null;
+	}
+
+	public inline function makeIndex( x, y ) {
+		return (x<<16) + (1<<15) + y;
+	}
 
 	@:extern static inline function fastRemoveAt<T>( array: Array<T>, index: Int ) {
 		if ( index >= 0 ) {
@@ -129,7 +165,7 @@ class SpatialHash {
 	}
 	
 	@:extern inline function addSingle( e: SpatialEntity, x: Int, y: Int, intersected: Map<Int,Bool> ) {
-		var idx = (x<<15) + y;
+		var idx = makeIndex( x, y );
 		var bucket = buckets.get( idx );
 
 		if ( bucket == null ) {
@@ -156,7 +192,7 @@ class SpatialHash {
 	}
 
 	@:extern inline function removeSingle( e: SpatialEntity, x: Int, y: Int ) {
-		var idx = (x<<15) + y;
+		var idx = makeIndex( x, y );
 		var bucket = buckets.get( idx );
 		if ( bucket.length <= 1 ) {
 			buckets.remove( idx );
