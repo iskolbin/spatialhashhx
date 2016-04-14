@@ -14,7 +14,7 @@ var ew = 2;
 var eh = 2;
 var BUCKET_SIZE = 16;
 var debug = false;
-
+var active = true;
 var spatialHash = new SpatialHash( BUCKET_SIZE );
 
 canvas.style = "background: #000;";
@@ -32,7 +32,9 @@ function resizeCanvas() {
 
 function init() {
 	window.addEventListener( "resize", resizeCanvas );
-	
+	window.onblur = function() {active = false;};
+	window.onfocus = function() {active = true; window.requestAnimationFrame(step);};
+
 	resizeCanvas();
 
 	for ( var i = 0; i < N; i++ ) {
@@ -157,7 +159,7 @@ function step(timestamp) {
 	if ( !start ) {
 		start = timestamp;
 		render();
-	} else {
+	} else if ( active ) {
 		var dt = 0.001 * (timestamp - start);
 		if ( dt > INTERVAL ) {
 			start = timestamp;
@@ -166,7 +168,12 @@ function step(timestamp) {
 			render();
 		}
 	}
-	window.requestAnimationFrame(step);
+
+	if ( active ) {
+		window.requestAnimationFrame(step);
+	} else {
+		start = null;
+	}
 }
 
 init();
