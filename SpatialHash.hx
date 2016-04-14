@@ -5,12 +5,14 @@ class SpatialHash {
 	public var entities(default,null): Array<SpatialEntity>;
 	public var bucketSize(default,null): Float;
 	public var invBs(default,null): Float;
+	public var pool(default,null): Array<Array<SpatialEntity>>;
 
 	public function new( bucketSize: Float ) {
 		this.buckets = new Map<Int,Array<SpatialEntity>>();
 		this.entities = [];
 		this.bucketSize = bucketSize;
 		this.invBs = 1.0 / bucketSize;
+		this.pool = [];
 	}
 
 	public inline function exists( e: SpatialEntity ) {
@@ -31,11 +33,11 @@ class SpatialHash {
 			if ( spatialRight != spatialLeft || spatialTop != spatialBottom ) {
 				for ( x in spatialLeft...spatialRight+1 ) {
 					for ( y in spatialTop...spatialBottom+1 ) {
-						intersected = addSingle( e, x, y, intersected );
+						intersected = addSingleTestIntersections( e, x, y, intersected );
 					}
 				}
 			} else {
-				addSingle( e, spatialLeft, spatialTop, null );
+				addSingleTestIntersections( e, spatialLeft, spatialTop, null );
 			}
 
 			return true;
@@ -74,17 +76,62 @@ class SpatialHash {
 		return false;
 	}
 	
+	public static inline function min( a: Int, b: Int ) return (a <= b) ? a : b;
+	
+	public static inline function max( a: Int, b: Int ) return (a >= b) ? a : b;
+
+	public function move( e: SpatialEntity, left: Float, top: Float, right: Float, bottom: Float ) {
+		if ( exists( e )) {
+			var spatialLeft = Std.int(e.aabbLeft * invBs);
+			var spatialTop = Std.int(e.aabbTop * invBs);
+			var spatialRight = Std.int(e.aabbRight * invBs);
+			var spatialBottom = Std.int(e.aabbBottom * invBs);
+			
+			var spatialLeftNew = Std.int(left * invBs);
+			var spatialTopNew = Std.int(top * invBs);
+			var spatialRightNew = Std.int(right * invBs);
+			var spatialBottomNew = Std.int(bottom * invBs);
+			
+			var intersected: Map<Int,Bool> = null;
+
+			if ( spatialLeft != spatialLeftNew || spatialTop != spatialTopNew || spatialRight != spatialRightNew || spatialBottom != spatialBottomNew ) {		
+				if ( spatialRight != spatialLeft || spatialTop != spatialBottom ) {
+					for ( x in spatialLeft...spatialRight+1 ) {
+						for ( y in spatialTop...spatialBottom+1 ) {
+							removeSingle( e, x, y );
+						}
+					}
+				} else {
+					removeSingle( e, spatialLeft, spatialTop );
+				}
+			
+				if ( spatialRightNew != spatialLeftNew || spatialTopNew != spatialBottomNew ) {				
+					for ( x in spatialLeftNew...spatialRightNew+1 ) {
+						for ( y in spatialTopNew...spatialBottomNew+1 ) {
+							intersected = addSingleTestIntersections( e, x, y, intersected );
+						}
+					}
+				}	 else {
+					addSingle( e, spatialLeftNew, spatialTopNew );
+				}
+			}
+
+			e.aabbLeft = left;
+			e.aabbTop = top;
+			e.aabbRight = right;
+			e.aabbBottom = bottom;
+
+			return true;
+		}
+		return false;
+	}
+	
 	public inline function setPos( e: SpatialEntity, left: Float, top: Float ) {
 		addPos( e, left - e.aabbLeft, top - e.aabbTop );
 	}
 
 	public inline function addPos( e: SpatialEntity, dleft: Float, dtop: Float ) {
-		remove( e );
-		e.aabbLeft += dleft;
-		e.aabbRight += dleft;
-		e.aabbTop += dtop;
-		e.aabbBottom += dtop;
-		add( e );
+		addAABB( e, dleft, dtop, dleft, dtop );
 	}
 
 	public inline function setSize( e: SpatialEntity, width: Float, height: Float ) {
@@ -92,19 +139,11 @@ class SpatialHash {
 	}
 
 	public inline function addSize( e: SpatialEntity, dwidth: Float, dheight: Float ) {
-		remove( e );
-		e.aabbRight += dwidth;
-	 	e.aabbBottom += dheight;	
-		add( e );
+		addAABB( e, 0, 0, dwidth, dheight );
 	}
 
 	public inline function setAABB( e: SpatialEntity, left: Float, top: Float, right: Float, bottom: Float ) {
-		remove( e );
-		e.aabbLeft = left;
-		e.aabbRight = right;
-		e.aabbTop = top;
-		e.aabbBottom = bottom;
-		add( e );
+		move( e, left, top, right, bottom );
 	}
 
 	public inline function addAABB( e: SpatialEntity, dleft: Float, dtop: Float, dright: Float, dbottom: Float ) {
@@ -164,13 +203,19 @@ class SpatialHash {
 		fastRemoveAt( array, index );
 	}
 	
-	@:extern inline function addSingle( e: SpatialEntity, x: Int, y: Int, intersected: Map<Int,Bool> ) {
+	@:extern inline function addSingleTestIntersections( e: SpatialEntity, x: Int, y: Int, intersected: Map<Int,Bool> ) {
 		var idx = makeIndex( x, y );
 		var bucket = buckets.get( idx );
 
 		if ( bucket == null ) {
-			buckets.set( idx, [e] );
-		} else {
+			if ( pool.length > 0 ) {
+				bucket = pool.pop();
+				bucket.push( e );
+				buckets.set( idx, bucket );
+			} else {
+				buckets.set( idx, [e] );
+			}
+		}	else {
 			if ( intersected == null ) {
 				intersected = [e.spatialId => true];
 			}
@@ -183,6 +228,8 @@ class SpatialHash {
 				}
 			}
 
+			intersected = checkIntersectionsInBucket( e, bucket, intersected );
+
 			if ( bucket.indexOf( e ) < 0 ) {
 				bucket.push( e );
 			}
@@ -191,10 +238,46 @@ class SpatialHash {
 		return intersected;
 	}
 
+	@:extern inline function addSingle( e: SpatialEntity, x: Int, y: Int ) {
+		var idx = makeIndex( x, y );
+		var bucket = buckets.get( idx );
+
+		if ( bucket == null ) {
+			if ( pool.length > 0 ) {
+				bucket = pool.pop();
+				bucket.push( e );
+				buckets.set( idx, bucket );
+			} else {
+				buckets.set( idx, [e] );
+			}
+		} else {
+			if ( bucket.indexOf( e ) < 0 ) {
+				bucket.push( e );
+			}
+		}
+	}
+
+	@:extern inline function checkIntersectionsInBucket( e: SpatialEntity, bucket: Array<SpatialEntity>, intersected: Map<Int,Bool> ) {
+		if ( intersected == null ) {
+			intersected = [e.spatialId => true];
+		}
+		for ( o in bucket ) {
+			if ( !intersected.exists(o.spatialId) && checkAABBIntersection( e, o )) {
+				if ( (e.shape == AABB && o.shape == AABB) || checkShapeIntersection( e, o ) ) {
+					e.onIntersection( o );
+					o.onIntersection( e );
+				}
+			}
+		}
+		return intersected;
+	}
+
 	@:extern inline function removeSingle( e: SpatialEntity, x: Int, y: Int ) {
 		var idx = makeIndex( x, y );
 		var bucket = buckets.get( idx );
 		if ( bucket.length <= 1 ) {
+			pool.push( bucket );
+			bucket.pop();
 			buckets.remove( idx );
 		} else {
 			fastRemove( bucket, e );
@@ -332,17 +415,20 @@ class SpatialHash {
 	@:extern static inline function checkPolygonPolygon( vertices1: Array<Float>, vertices2: Array<Float> ) {
 		var i = 2;
 		var intersection = false;
-		var x1 = vertices1[0];
-		var y1 = vertices1[1];
+		var x1 = vertices1[vertices1.length-2];
+		var y1 = vertices1[vertices1.length-1];
+		var x2 = vertices1[0];
+		var y2 = vertices1[1];
 
-		while ( i < vertices1.length && !intersection ) {
-			var j = 2;
-			var x2 = vertices1[i];
-			var y2 = vertices1[i+1];
+		while ( true ) {
 			intersection = checkLineSegmentPolygon( x1, y1, x2, y2, vertices2 );
+			if ( intersection ) break;
+			i += 2;
+			if ( i >= vertices1.length ) break;
 			x1 = x2;
 			y1 = y2;
-			i += 2;
+			x2 = vertices1[i];
+			y2 = vertices1[i+1];
 		}
 
 		return intersection;
@@ -351,16 +437,20 @@ class SpatialHash {
 	@:extern static inline function checkRayPolygon( x1: Float, y1: Float, x2: Float, y2: Float, vertices: Array<Float> ) {
 		var i = 2;
 		var intersection = false;
-		var x3 = vertices[0];
-		var y3 = vertices[1];
+		var x3 = vertices[vertices.length-2];
+		var y3 = vertices[vertices.length-1];
+		var x4 = vertices[0];
+		var y4 = vertices[1];
 
-		while ( i < vertices.length && !intersection) {
-			var x4 = vertices[i];
-			var y4 = vertices[i+1];
+		while ( true ) {
 			intersection = checkRayLineSegment( x1, y1, x2, y2, x3, y3, x4, y4 ); 
+			if ( intersection ) break;
+			i += 2;
+			if ( i >= vertices.length ) break;
 			x3 = x4;
 			y3 = y4;
-			i += 2;	
+			x4 = vertices[i];
+			y4 = vertices[i+1];
 		}
 
 		return intersection;
@@ -368,20 +458,23 @@ class SpatialHash {
 
 	@:extern static inline function getRayPolygonCount( x1: Float, y1: Float, x2: Float, y2: Float, vertices: Array<Float> ) {
 		var i = 2;
-		var x3 = vertices[0];
-		var y3 = vertices[1];
+		var x3 = vertices[vertices.length-2];
+		var y3 = vertices[vertices.length-1];
+		var x4 = vertices[0];
+		var y4 = vertices[1];
 		var count = 0;
 
-		while ( i < vertices.length ) {
-			var x4 = vertices[i];
-			var y4 = vertices[i+1];
+		while ( true ) {
 			var intersection = checkRayLineSegment( x1, y1, x2, y2, x3, y3, x4, y4 ); 
 			if ( intersection ) {
 				count++;
 			}
+			i += 2;	
+			if ( i >= vertices.length ) break;
 			x3 = x4;
 			y3 = y4;
-			i += 2;	
+			x4 = vertices[i];
+			y4 = vertices[i+1];
 		}
 
 		return count;
@@ -461,16 +554,18 @@ class SpatialHash {
 	@:extern static inline function checkLineSegmentPolygon( x1: Float, y1: Float, x2: Float, y2: Float, vertices: Array<Float> ) {
 		var i = 2;
 		var intersection = false;
-		var x3 = vertices[0];
-		var y3 = vertices[1];
+		var x3 = vertices[vertices.length-2];
+		var y3 = vertices[vertices.length-1];
+		var x4 = vertices[0];
+		var y4 = vertices[1];
 
 		while ( i < vertices.length && !intersection) {
-			var x4 = vertices[i];
-			var y4 = vertices[i+1];
 			intersection = checkLineSegmentLineSegment( x1, y1, x2, y2, x3, y3, x4, y4 ); 
 			x3 = x4;
 			y3 = y4;
 			i += 2;	
+			x4 = vertices[i];
+			y4 = vertices[i+1];
 		}
 
 		return intersection;
