@@ -23,7 +23,16 @@ function onIntersection( self, other ) {
 	
 }
 
+function resizeCanvas() {
+	canvas.width = window.innerWidth;
+	canvas.height = window.innerHeight;
+	w = canvas.width;
+	h = canvas.height;
+}
+
 function init() {
+	window.addEventListener( "resize", resizeCanvas );
+
 	for ( var i = 0; i < N; i++ ) {
 		var x = ( Math.random()*w >> 0 );
 		var y = ( Math.random()*h >> 0 );
