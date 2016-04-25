@@ -79,6 +79,10 @@ class SpatialHash {
 	public static inline function min( a: Int, b: Int ) return (a <= b) ? a : b;
 	
 	public static inline function max( a: Int, b: Int ) return (a >= b) ? a : b;
+	
+	public static inline function fmin( a: Float, b: Float ) return (a <= b) ? a : b;
+	
+	public static inline function fmax( a: Float, b: Float ) return (a >= b) ? a : b;
 
 	public function move( e: SpatialEntity, left: Float, top: Float, right: Float, bottom: Float ) {
 		if ( exists( e )) {
@@ -149,6 +153,40 @@ class SpatialHash {
 	public inline function addAABB( e: SpatialEntity, dleft: Float, dtop: Float, dright: Float, dbottom: Float ) {
 		setAABB( e, e.aabbLeft + dleft, e.aabbTop + dtop, e.aabbRight + dright, e.aabbBottom + dbottom );
 	}
+
+	public inline function updateAABB( e: SpatialEntity ) return switch( e.shape ) {
+		case AABB:
+		case Point(x,y): setAABB( e, x, y, x, y );
+		case Circle(x,y,r): setAABB( e, x-r, y-r, x+r, y+r );
+		case LineSegment(x1,y1,x2,y2): setAABB( e, fmin(x1,x2), fmin(y1,y2), fmax(x1,x2), fmax(y1,y2));
+		case Ray(_): throw "Ray is infinite, you cannot set bounding box for it";
+		case Polygon(vertices): switch( vertices.length ) {
+			case 0: setAABB( e, 0, 0, 0, 0 );
+			case 2: setAABB( e, vertices[0], vertices[1], vertices[0], vertices[1] );
+			case _:
+				var minx = fmin( vertices[0], vertices[2] );
+				var maxx = fmax( vertices[0], vertices[2] );
+				var miny = fmin( vertices[1], vertices[3] );
+				var maxy = fmax( vertices[1], vertices[3] );
+				var j = 4;
+				while ( j < vertices.length ) {
+					minx = fmin( minx, vertices[j] );
+					maxx = fmax( maxx, vertices[j] );
+					miny = fmin( miny, vertices[j+1] );
+					maxy = fmax( maxy, vertices[j+1] );
+					j += 2;
+				}
+				setAABB( e, minx, miny, maxx, maxy );	
+		}
+	}
+
+	// TODO
+	public static inline function rotate2( e: SpatialEntity, vsin: Float, vcos: Float, cx: Float, cy: Float ) switch( e.shape ) {
+		case _: 
+	}
+
+	public static inline function rotate( e: SpatialEntity, angle: Float, cx: Float, cy: Float )
+		rotate2( e, Math.sin(angle), Math.cos(angle), cx, cy );
 
 	public static var MAX_NEAREST_STEPS = 32;
 
