@@ -6,7 +6,7 @@ var start = 0;
 var w = canvas.width;
 var h = canvas.height;
 var INTERVAL = 1.0/60.0;
-var N = 20000;
+var N = 10000;
 var R = 2;
 var PI2 = 2 * Math.PI;
 var es = new Float32Array(N*4);
@@ -42,7 +42,8 @@ function init() {
 		var y = ( Math.random()*h >> 0 );
 		var e = {
 			spatialId: -1,
-			shape: Shape.AABB,
+			spatialGroup: -1,
+			shape: SpatialShape.AABB,
 			aabbLeft: x,
 			aabbRight: x + ew,
 			aabbTop: y,
@@ -65,9 +66,9 @@ function init() {
 
 
 function clear(mode) {
-	ctx.fillStyle = "rgba(0,0,0,0.1)";
-	ctx.fillRect(0,0,w,h);
-	//ctx.clearRect(0,0,w,h);
+	//ctx.fillStyle = "rgba(0,0,0,0.1)";
+	//ctx.fillRect(0,0,w,h);
+	ctx.clearRect(0,0,w,h);
 }
 
 function render() {
