@@ -1,6 +1,6 @@
 package ;
 
-enum Shape {
+enum SpatialShape {
 	AABB;
 	Circle( x: Float, y: Float, radius: Float);
 	Point( x: Float, y: Float );

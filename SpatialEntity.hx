@@ -2,7 +2,8 @@ package ;
 
 interface SpatialEntity {
 	public var spatialId: Int;
-	public var shape: Shape;
+	public var spatialGroup: Int;
+	public var shape: SpatialShape;
 
 	public var aabbLeft: Float;
 	public var aabbRight: Float;
