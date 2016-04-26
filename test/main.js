@@ -6,7 +6,7 @@ var start = 0;
 var w = canvas.width;
 var h = canvas.height;
 var INTERVAL = 1.0/60.0;
-var N = 10000;
+var N = 1000;
 var R = 2;
 var PI2 = 2 * Math.PI;
 var es = new Float32Array(N*4);
@@ -14,20 +14,55 @@ var ew = 2;
 var eh = 2;
 var BUCKET_SIZE = 16;
 var debug = false;
+//true;
+//false;
 var active = true;
 var spatialHash = new SpatialHash( BUCKET_SIZE );
 
 canvas.style = "background: #000;";
 
-function onIntersection( self, other ) {
-	
-}
 
 function resizeCanvas() {
 	canvas.width = window.innerWidth;
 	canvas.height = window.innerHeight;
 	w = canvas.width;
 	h = canvas.height;
+}
+
+function newEntity( x, y ) {
+	const e = {
+		spatialId: -1,
+		spatialGroup: -1,
+		//shape: SpatialShape.AABB,
+		aabbLeft: x,
+		aabbRight: x + ew,
+		aabbTop: y,
+		aabbBottom: y + eh,
+		vx: 100*Math.random()-50,
+		vy: 100*Math.random()-50,
+		onBeginIntersection: function( other ) {
+			if ( Math.random() > 0 ) {
+				let tmpvx = e.vx;
+				let tmpvy = e.vy;
+				e.vx = other.vx;
+				e.vy = other.vy;
+				other.vx = tmpvx;
+				other.vy = tmpvy;
+			} else {
+				if ( Math.random() > 0.5 ) {
+					spatialHash.remove( e );
+					spatialHash.remove( other );
+				}	else {
+					newEntity( x - ew, y - eh );
+					newEntity( x + ew, y + eh );
+				}
+			}
+		},
+		onStopIntersection: function() {},
+		onIntersection: function() {},
+	};
+	
+	spatialHash.add( e );
 }
 
 function init() {
@@ -37,30 +72,10 @@ function init() {
 
 	resizeCanvas();
 
-	for ( var i = 0; i < N; i++ ) {
-		var x = ( Math.random()*w >> 0 );
-		var y = ( Math.random()*h >> 0 );
-		var e = {
-			spatialId: -1,
-			spatialGroup: -1,
-			shape: SpatialShape.AABB,
-			aabbLeft: x,
-			aabbRight: x + ew,
-			aabbTop: y,
-			aabbBottom: y + eh,
-			vx: 100*Math.random()-50,
-			vy: 100*Math.random()-50,
-			onIntersection: function( other ) {
-				let tmpvx = e.vx;
-				let tmpvy = e.vy;
-				e.vx = other.vx;
-				e.vy = other.vy;
-				other.vx = tmpvx;
-				other.vy = tmpvy;
-				
-			},
-		}
-		spatialHash.add( e );
+	for ( let i = 0; i < N; i++ ) {
+		let x = ( Math.random()*w >> 0 );
+		let y = ( Math.random()*h >> 0 );
+		newEntity( x, y );
 	}
 }
 
@@ -96,6 +111,7 @@ function render() {
 	//ctx.stroke();
 }
 
+/*
 function fireLightning( e, except, depth ) {
 	var except = except === undefined ? new haxe_ds_IntMap() : except;
 	var depth = depth === undefined ? 0 : depth;
@@ -126,10 +142,13 @@ function fireLightning( e, except, depth ) {
 		ctx.stroke();
 	}
 }
-
+*/
 function update(dt) {
 	var g = 9.81*dt;
-	for ( var i = 0; i < N; i++ ) {
+	
+	console.log( spatialHash.pool.length );
+	
+	for ( var i = 0; i < spatialHash.entities.length; i++ ) {
 		var e = spatialHash.entities[i];
 		var x = e.aabbLeft;
 		var y = e.aabbTop;
@@ -146,13 +165,27 @@ function update(dt) {
 			e.vy = vy;
 		}
 
-		spatialHash.addPos( e, vx*dt, vy*dt );
+		//spatialHash.addPos( e, vx*dt, vy*dt );
+		const wasLeft = e.aabbLeft;
+		const wasTop = e.aabbTop;
+		const wasRight = e.aabbRight;
+		const wasBottom = e.aabbBottom;
 		
+		const dx = vx * dt;
+		const dy = vy * dt;	
+
+		e.aabbLeft += dx;
+		e.aabbTop += dy
+		e.aabbRight += dx;
+		e.aabbBottom += dy;
+
+		spatialHash.update( e, wasLeft, wasTop, wasRight, wasBottom );
+				
 		e.vy = vy + g;
-		
+	/*	
 		if ( Math.random() < dt ) {
 			fireLightning( e );
-		}
+		}*/
 	}	
 }
 
