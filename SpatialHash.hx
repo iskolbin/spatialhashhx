@@ -1,27 +1,27 @@
 package ;
 
-class SpatialHash {
-	public var buckets(default,null): Map<Int,Array<SpatialEntity>>;
-	public var entities(default,null): Array<SpatialEntity>;
+class SpatialHash<T:(SpatialEntity<T>)> {
+	public var buckets(default,null): Map<Int,Array<T>>;
+	public var entities(default,null): Array<T>;
 	public var bucketSize(default,null): Float;
 	public var invBs(default,null): Float;
-	public var intersections(default,null): Map<Int,Array<SpatialEntity>>; 
-	public var pool(default,null): Array<Array<SpatialEntity>>;
+	public var intersections(default,null): Map<Int,Array<T>>; 
+	public var pool(default,null): Array<Array<T>>;
 
 	public function new( bucketSize: Float ) {
-		this.buckets = new Map<Int,Array<SpatialEntity>>();
-		this.intersections = new Map<Int,Array<SpatialEntity>>();
+		this.buckets = new Map<Int,Array<T>>();
+		this.intersections = new Map<Int,Array<T>>();
 		this.entities = [];
 		this.bucketSize = bucketSize;
 		this.invBs = 1.0 / bucketSize;
 		this.pool = [];
 	}
 
-	public inline function exists( e: SpatialEntity ) {
+	public inline function exists( e: T ) {
 		return e.spatialId >= 0 && entities[e.spatialId] == e;
 	}
 
-	public function add( e: SpatialEntity ) {
+	public function add( e: T ) {
 		if ( !exists( e )) {
 			var spatialLeft = Std.int(e.aabbLeft * invBs);
 			var spatialTop = Std.int(e.aabbTop * invBs);
@@ -38,7 +38,7 @@ class SpatialHash {
 		}
 	}
 
-	public function remove( e: SpatialEntity ) {	
+	public function remove( e: T ) {	
 		if ( exists( e )) {
 			var spatialLeft = Std.int(e.aabbLeft * invBs);
 			var spatialTop = Std.int(e.aabbTop * invBs);
@@ -63,7 +63,7 @@ class SpatialHash {
 		return false;
 	}
 
-	public function update( e: SpatialEntity, wasLeft: Float, wasTop: Float, wasRight: Float, wasBottom: Float ) {
+	public function update( e: T, wasLeft: Float, wasTop: Float, wasRight: Float, wasBottom: Float ) {
 		if ( exists( e )) {	
 			var spatialLeft = Std.int(wasLeft * invBs);
 			var spatialTop = Std.int(wasTop * invBs);
@@ -93,19 +93,19 @@ class SpatialHash {
 		return left1 < right2 && left2 < right1 && top1 < bottom2 && top2 < bottom1;
 	}
 
-	public static inline function checkAABBIntersection( e: SpatialEntity, o: SpatialEntity ) {
+	public inline function checkAABBIntersection( e: T, o: T ) {
 		return aabbAABB( e.aabbLeft, e.aabbTop, e.aabbRight, e.aabbBottom, o.aabbLeft, o.aabbTop, o.aabbRight, o.aabbBottom );
 	}
 
-	public static inline function checkGroupIntersection( e: SpatialEntity, o: SpatialEntity ) {
+	public inline function checkGroupIntersection( e: T, o: T ) {
 		return e.spatialGroup < 0 || o.spatialGroup < 0 || (e.spatialGroup & o.spatialGroup != 0);
 	}
 
-	public function checkPreciseIntersection( e: SpatialEntity, o: SpatialEntity ) {
+	public function checkPreciseIntersection( e: T, o: T ) {
 		return true;
 	}
 	
-	@:extern inline function doAdd( e: SpatialEntity, spatialLeft: Int, spatialTop: Int, spatialRight: Int, spatialBottom: Int ) {
+	@:extern inline function doAdd( e: T, spatialLeft: Int, spatialTop: Int, spatialRight: Int, spatialBottom: Int ) {
 		var checked: Map<Int, Bool> = null;
 		for ( x in spatialLeft...spatialRight+1 ) {
 			for ( y in spatialTop...spatialBottom+1 ) {
@@ -115,7 +115,7 @@ class SpatialHash {
 		return checked;
 	}
 	
-	@:extern inline function doRemove( e: SpatialEntity, spatialLeft: Int, spatialTop: Int, spatialRight: Int, spatialBottom: Int ) {
+	@:extern inline function doRemove( e: T, spatialLeft: Int, spatialTop: Int, spatialRight: Int, spatialBottom: Int ) {
 		for ( x in spatialLeft...spatialRight+1 ) {
 			for ( y in spatialTop...spatialBottom+1 ) {
 				removeSingle( e, x, y );
@@ -124,7 +124,7 @@ class SpatialHash {
 	}
 
 	// FIXME
-	@:extern inline function removeIntersections( e: SpatialEntity ) {
+	@:extern inline function removeIntersections( e: T ) {
 		var eintersections = intersections.get( e.spatialId );
 		if ( eintersections != null ) {
 			for ( i in 0...eintersections.length ) { 
@@ -150,7 +150,7 @@ class SpatialHash {
 
 	static var BLANK_CHECKED = new Map<Int,Bool>();
 
-	@:extern inline function updateIntersections( e: SpatialEntity, checked: Map<Int,Bool> ) {
+	@:extern inline function updateIntersections( e: T, checked: Map<Int,Bool> ) {
 		var eintersections = intersections.get( e.spatialId );
 		
 		if ( checked == null ) {
@@ -197,7 +197,7 @@ class SpatialHash {
 		fastRemoveAt( array, index );
 	}
 	
-	@:extern inline function addSingle( e: SpatialEntity, x: Int, y: Int, checked: Map<Int,Bool> ) {
+	@:extern inline function addSingle( e: T, x: Int, y: Int, checked: Map<Int,Bool> ) {
 		var idx = makeIndex( x, y );
 		var bucket = buckets.get( idx );
 
@@ -214,17 +214,17 @@ class SpatialHash {
 		return checked;
 	}
 
-	@:extern inline function newPooledBucket(): Array<SpatialEntity> {
+	@:extern inline function newPooledBucket(): Array<T> {
 		return ( pool.length > 0 ) ? pool.pop() : [];
 	}
 
-	@:extern inline function newPooledBucket1( e: SpatialEntity ): Array<SpatialEntity> {
+	@:extern inline function newPooledBucket1( e: T ): Array<T> {
 		var bucket = newPooledBucket();
 		bucket.push( e );
 		return bucket;
 	}
 
-	@:extern inline function checkIntersectionsInBucket( e: SpatialEntity, bucket: Array<SpatialEntity>, checked: Map<Int,Bool> ) {
+	@:extern inline function checkIntersectionsInBucket( e: T, bucket: Array<T>, checked: Map<Int,Bool> ) {
 		if ( checked == null ) {
 			checked = [e.spatialId => true];
 		}
@@ -291,7 +291,7 @@ class SpatialHash {
 		return checked;
 	}
 
-	@:extern inline function removeSingle( e: SpatialEntity, x: Int, y: Int ) {
+	@:extern inline function removeSingle( e: T, x: Int, y: Int ) {
 		var idx = makeIndex( x, y );
 		var bucket = buckets.get( idx );
 		if ( bucket != null ) {
